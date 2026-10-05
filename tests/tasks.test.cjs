@@ -123,11 +123,11 @@ test('new tasks update totals, handle empty checklists, and derive blocking imme
 });
 
 test('all phase 1 and phase 2 navigation targets exist and are protected', () => {
-  for (const route of ['index', '(auth)/login', '(auth)/register', '(tabs)/home', '(tabs)/tasks', 'project/[id]', 'task/[id]', 'task/create']) {
+  for (const route of ['index', '(auth)/login', '(auth)/register', '(tabs)/home', '(tabs)/tasks', 'project/[id]', 'task/[id]', 'task/create', 'notifications']) {
     assert(fs.existsSync('src/app/' + route + '.tsx'), route);
   }
   const root = fs.readFileSync('src/app/_layout.tsx', 'utf8');
-  for (const route of ['(tabs)', 'project/[id]', 'task/[id]', 'task/create']) {
+  for (const route of ['(tabs)', 'project/[id]', 'task/[id]', 'task/create', 'notifications']) {
     assert(root.slice(root.indexOf('guard={!!user}')).includes('name="' + route + '"'));
   }
   const brand = fs.readFileSync('src/components/Brand.tsx', 'utf8');

@@ -19,6 +19,7 @@ function Navigation() {
           <Stack.Screen name="project/[id]" />
           <Stack.Screen name="task/[id]" />
           <Stack.Screen name="task/create" />
+          <Stack.Screen name="notifications" />
         </Stack.Protected>
       </Stack>
     </ProjectProvider>
