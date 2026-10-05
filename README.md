@@ -1,17 +1,26 @@
-# SyncTask ? Phase 3
+# SyncTask — shared projects
 
-Expo SDK 57 / React Native / TypeScript / Expo Router. Authentication and user profiles now use Firebase; the sample project, five members, 25 tasks, checklists, and dependencies remain in local React state. Initial project progress remains 18/25 (72%). The final logo is unchanged.
+Expo SDK 57 / React Native / TypeScript / Expo Router / Firebase Auth and Firestore.
 
-## Firebase setup (manual)
+## Features
 
-1. Install dependencies with `npm.cmd install`.
-2. In [Firebase Console](https://console.firebase.google.com/), create or select a project.
-3. Project overview ? Add app ? Web (`</>`). Register a Web App; Hosting is not needed. Copy its Firebase configuration from Project settings ? General ? Your apps ? SDK setup and configuration.
-4. Authentication ? Get started (if shown) ? Sign-in method ? Email/Password ? enable the Email/Password provider ? Save. Email link sign-in is not used.
-5. Firestore Database ? Create database ? select a region ? start in production mode.
-6. Firestore Database ? Rules: replace the rules with the contents of `firestore.rules` and click Publish. This file allows only the signed-in owner to get/create/update `users/{uid}`, validates profile fields, and denies all other collections. No Firebase CLI, Hosting, or deployment configuration is added.
-7. In PowerShell, `Copy-Item .env.example .env`. Fill all seven variables below. Use Firebase's Web App values and your actual school email domain, with no `@`, protocol, or subdomain wildcard.
-8. Stop and restart Expo after editing .env. If old values remain cached, use `npx.cmd expo start --go --clear`.
+- Email/password registration and login, school-domain validation, saved profiles, and persistent sign-in.
+- Create projects and subscribe to shared projects/tasks in real time. Each account starts with an empty workspace; the old sample data is now used only by tests.
+- Owners manage members and invitation codes. Editors create, edit, reassign, complete, and delete tasks. Viewers have read-only access. Firestore rules enforce these permissions.
+- Single-use invitation codes grant editor or viewer access, expire after seven days, and can be revoked. Share codes privately: possession of a code plus a signed-in account is sufficient to join. Codes are not tied to an email address.
+- Task checklists, deadline validation, dependency blocking, cycle detection, progress, and reopening tasks. A prerequisite cannot be deleted while other tasks depend on it.
+- My Tasks shows the signed-in user's assignments across every joined project. Search by title/description, filter by status, and view tasks in deadline order.
+- Home shows overdue assignments and assignments due today/tomorrow. Optional phone reminders fire at 9 AM local time the day before and the day of a deadline. Enable them on Home and allow notification permission.
+
+## Firebase setup
+
+1. Install dependencies: `npm.cmd ci`.
+2. Create/select a Firebase project. Register a Web App and copy its client configuration from Project settings → General → Your apps.
+3. Enable Authentication → Email/Password.
+4. Create a Firestore database in production mode.
+5. **Publish the entire updated `firestore.rules` file** in Firestore Database → Rules. The old profile-only rules deny shared projects and invitations. Alternatively, after authenticating Firebase CLI, run `npx.cmd firebase deploy --only firestore:rules --project YOUR_PROJECT_ID`.
+6. Run `Copy-Item .env.example .env` and fill all seven values below. Set the exact school email domain without `@`, protocols, or wildcards.
+7. Restart Expo after changing `.env`.
 
 ```dotenv
 EXPO_PUBLIC_FIREBASE_API_KEY=
@@ -23,55 +32,54 @@ EXPO_PUBLIC_FIREBASE_APP_ID=
 EXPO_PUBLIC_ALLOWED_EMAIL_DOMAIN=
 ```
 
-.env is ignored by Git; .env.example contains no real values. EXPO_PUBLIC values are included in the app bundle, so use only Firebase client configuration here, never service-account keys or other server secrets. The storage bucket value is part of configuration only; Firebase Storage is not used.
+Only use Firebase client configuration in EXPO_PUBLIC variables. Never add service account keys or server secrets. `.env` is ignored by Git. Client school-domain validation does not verify email ownership; email verification and password recovery are separate future features.
 
-The school domain check is exact and case-insensitive. Registration and Login reject different domains, subdomains, and lookalike suffixes. Missing configuration blocks submission and shows which variables need attention. This client validation does not establish ownership of an email address; email verification is not included in this phase.
-
-## Run in PowerShell
+## Run
 
 ```powershell
-cd C:\Users\ejay\SyncTask
-npx.cmd expo start --go
+npx.cmd expo start
 ```
 
-Scan the QR code in Expo Go supporting SDK 57. Keep the phone and computer on the same network.
+Notification configuration is included in `app.json`. After adding native packages or changing their configuration, create/rebuild your development build following https://docs.expo.dev/develop/development-builds/create-a-build/. This repository uses generated native projects: configure them through `app.json` instead of editing `ios/` or `android/`.
 
-## Authentication behavior
+## Data and consistency
 
-Register validates a trimmed name of 2?80 characters, normalized school email, password of at least eight characters with uppercase/lowercase/number/special character, and exact confirmation. It creates the Auth account, sets displayName, then writes users/{uid} with uid, name, email, createdAt, and updatedAt (server timestamps). Passwords and tokens are never stored in Firestore.
+- `users/{uid}` holds each account's private profile. Profiles cannot be listed or read by other users.
+- `projects/{projectId}` holds metadata, owner ID, member IDs, shared display names/roles, task IDs, and a revision counter.
+- `projects/{projectId}/tasks/{taskId}` holds tasks.
+- `invitations/{random20CharacterCode}` holds the project ID/name, editor/viewer role, expiration, and accepted account ID. Only owners can list/create/revoke invitations. Signed-in users can retrieve a specific code to accept it.
+- Invitation acceptance atomically adds membership and marks the code as used. Rules require both changes together and prevent changing the granted role.
+- Task mutations read current project/task documents in a transaction and validate assignments/dependencies again. The revision counter serializes changes so simultaneous checklist updates do not overwrite one another. Removing a member requires their tasks to be reassigned first.
+- Projects support up to 40 members and 100 tasks. Each task supports 30 checklist items. Each task transaction reads all tasks in that project to reconcile dependency chains; this is appropriate for small classroom teams, but increases read costs as a project grows.
+- Writes require connectivity. Failed saves stay on the screen with an error and can be retried. Tasks are not optimistically reported as saved.
 
-Login uses email/password Auth and reads the owner profile; a missing profile from an interrupted registration is created on login. Duplicate email, invalid credentials, disabled account, weak password, request/network failures, and profile failures have readable messages. Failed profile setup keeps the authenticated app closed; if account creation already succeeded, sign in after fixing connectivity or Firestore rules rather than registering again.
+## Reminders and limitations
 
-Firebase Auth observation controls routing. The existing branded splash remains visible while restoring the session. Restored users go to Home; signed-out users go to Login without briefly showing the wrong screen. AsyncStorage persists native sessions; browser-local persistence is used on web. Fast Refresh reuses the app/Auth instances. A small TypeScript declaration supplies Firebase 12's React Native persistence export missing from its default public types.
+Phone reminders are local scheduled notifications, rather than server push notifications. They are refreshed when the app receives task updates, opens, or returns to the foreground. If teammates change work while this app is closed, existing alerts may remain until it is reopened. Web supports the in-app due-task list, but not phone notifications. The nearest 60 future alerts are scheduled to stay below device notification limits. Editing deadlines, reassigning tasks, completing tasks, disabling reminders, and signing out cancel or replace scheduled alerts when the app syncs. Reminder settings are saved per account on each device.
 
-Home greets the real profile/display name. The signed-in account remains separate from the five sample project members. Sign Out uses Firebase and clears session-local project/task edits; the original mock dataset remains intact. Auth persists across reloads; local tasks do not.
+Existing mock projects are not migrated or inserted into real accounts. There is no offline write queue, chat, file upload, activity log, server push sender, or hosting deployment in this milestone.
 
-## Existing task flow
-
-Home ? Project Dashboard ? Tasks ? Details/Create Task. Filters, checklist toggles, explicit task completion, progress, and dependency blocking remain local. Database Setup ? Connect Frontend ? Testing is the demo chain. Database Setup starts at 75%; finishing and completing it changes the project to 19/25 (76%) and unblocks Connect Frontend.
-
-## Checks
+## Automated checks
 
 ```powershell
-npx.cmd tsc --noEmit
-npx.cmd expo lint
-node --test tests/tasks.test.cjs tests/auth.test.cjs
-npx.cmd expo install --check
-npx.cmd expo export --platform android --output-dir dist --no-bytecode
+npm.cmd run typecheck
+npm.cmd run lint
+npm.cmd test
+npm.cmd run test:rules
+npx.cmd expo export --platform android --platform web --output-dir dist --no-bytecode
 ```
 
-Unit/service tests use fake Firebase adapters and do not create real accounts or documents. Live Firebase calls require your configured project and manual phone tests. The export is a local bundling check, not publishing.
+`test:rules` launches a local Firestore emulator with the demo project `demo-synctask-tests`; it does not access production data or require Firebase login. Java is required. Tests cover member/outsider access, saved project creation, editor/viewer writes, concurrent checklist updates, single-use/expired/revoked invitations, atomic joining, privilege escalation, role changes, member removal, editing, reassignment, and deletion.
 
-## Android phone test checklist
+## Two-account phone checklist
 
-1. With .env missing, confirm the clear setup error and disabled auth submission.
-2. Configure Firebase, publish the rules, fill .env, and restart Expo. Verify the final logo on loading, Login, and Register.
-3. Register with a real school email and strong password. Test spaces/short names, wrong domains (including subdomains and lookalikes), weak passwords, mismatched confirmation, and rapid double taps.
-4. Confirm the Authentication user has a displayName and users/{uid} has the five expected fields, timestamps, and no password/token.
-5. Home should greet your name and show 72%, 18/25, and five mock members.
-6. Sign out, test incorrect credentials and duplicate registration, then sign in again. Test network failure and retry.
-7. Close/reopen Expo Go or reload the app. Your Auth session should persist and open Home without a Login flash. Sign out and reload: you should remain signed out.
-8. Test dashboard navigation, filters, checklist toggles, Create Task, dependency unblocking/reblocking, and progress updates. Local edits reset on reload/sign-out.
-9. In the Firestore Rules Playground, test that an unauthenticated user and another UID cannot read/write your profile, and that the owner can access users/{their UID}. Projects/tasks must stay denied.
-
-Phase 3 stops here. No Firestore project/task migration, invitations, analytics, uploads, notifications, or production deployment.
+1. Configure Firebase and publish the updated rules. Register/sign in with two accounts.
+2. Account A: create a project; create an editor invitation and share the code.
+3. Account B: Join Project with the code. Both accounts should see the same project/member list. Try the code again with a third account; it must fail.
+4. Create tasks assigned to actual members. Edit a title, deadline, checklist, or assignee. Confirm the changes appear on the other device and survive app restart/sign-out.
+5. Change separate checklist items on both devices at the same time. Confirm neither update is lost. Finish a prerequisite and confirm dependents unblock; reopen it and confirm dependents block again.
+6. Change B to viewer. Task mutation controls should disappear/disable, and direct unauthorized writes must be rejected. Change B back to editor.
+7. Try deleting a prerequisite or removing a member with assigned tasks; follow the displayed instructions before retrying. After removal, B must lose project/task access.
+8. Open Tasks → My Tasks. Confirm only the current account's assignments appear, including assignments from multiple projects. Test search and status filters.
+9. Enable phone reminders and grant permissions. Create a task due tomorrow; verify the device schedules reminders. Complete/reassign it, change its deadline, disable reminders, or sign out and verify alerts are canceled/replaced. Tap an alert to open its task.
+10. Deny notification permission and test a failed network save. Both should explain the issue without reporting success.

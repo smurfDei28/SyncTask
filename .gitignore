@@ -44,3 +44,8 @@ example
 
 # Firebase local configuration
 .env
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+.firebase/
+.rules-test-output.log

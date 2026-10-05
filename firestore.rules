@@ -23,6 +23,123 @@ service cloud.firestore {
         && request.resource.data.createdAt == resource.data.createdAt;
       allow list, delete: if false;
     }
+    function signedIn() { return request.auth != null; }
+    function projectPath(id) { return /databases/$(database)/documents/projects/$(id); }
+    function isMember(id) {
+      return signedIn() && request.auth.uid in get(projectPath(id)).data.memberIds;
+    }
+    function isOwner(id) {
+      return signedIn() && get(projectPath(id)).data.ownerId == request.auth.uid;
+    }
+    function isEditor(id) {
+      return isMember(id) && (isOwner(id) || get(projectPath(id)).data.members[request.auth.uid].role == 'editor');
+    }
+    function validProject(data) {
+      return data.keys().hasAll(['name', 'description', 'deadline', 'ownerId', 'memberIds', 'members', 'taskIds', 'revision', 'joinInviteId', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['name', 'description', 'deadline', 'ownerId', 'memberIds', 'members', 'taskIds', 'revision', 'joinInviteId', 'createdAt', 'updatedAt'])
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 120
+        && data.description is string && data.description.size() <= 2000
+        && data.deadline is string && data.deadline.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.memberIds is list && data.memberIds.size() > 0 && data.memberIds.size() <= 40
+        && data.memberIds.size() == data.memberIds.toSet().size()
+        && data.members is map && data.members.keys().toSet() == data.memberIds.toSet()
+        && data.ownerId in data.memberIds && data.members[data.ownerId].role == 'owner'
+        && data.taskIds is list && data.taskIds.size() <= 100 && data.taskIds.size() == data.taskIds.toSet().size()
+        && data.revision is int && data.revision >= 0 && data.joinInviteId is string
+        && data.createdAt is timestamp && data.updatedAt == request.time;
+    }
+    function validJoin(id) {
+      let before = resource.data;
+      let after = request.resource.data;
+      let invitationPath = /databases/$(database)/documents/invitations/$(after.joinInviteId);
+      let invitation = get(invitationPath).data;
+      return signedIn() && !(request.auth.uid in before.memberIds)
+        && after.diff(before).affectedKeys().hasOnly(['members', 'memberIds', 'joinInviteId', 'updatedAt'])
+        && after.members.diff(before.members).affectedKeys().hasOnly([request.auth.uid])
+        && after.memberIds.size() == before.memberIds.size() + 1
+        && after.memberIds.hasAll(before.memberIds) && request.auth.uid in after.memberIds
+        && after.members[request.auth.uid].keys().hasOnly(['name', 'role'])
+        && after.members[request.auth.uid].name is string
+        && after.members[request.auth.uid].name.size() >= 2 && after.members[request.auth.uid].name.size() <= 80
+        && invitation.projectId == id && invitation.acceptedBy == '' && invitation.expiresAt > request.time
+        && after.members[request.auth.uid].role == invitation.role
+        && getAfter(invitationPath).data.acceptedBy == request.auth.uid;
+    }
+    match /projects/{projectId} {
+      allow read: if signedIn() && request.auth.uid in resource.data.memberIds;
+      allow create: if signedIn() && validProject(request.resource.data)
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.memberIds == [request.auth.uid]
+        && request.resource.data.members[request.auth.uid].keys().hasOnly(['name', 'role'])
+        && request.resource.data.members[request.auth.uid].name == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name
+        && request.resource.data.taskIds.size() == 0 && request.resource.data.revision == 0
+        && request.resource.data.joinInviteId == '' && request.resource.data.createdAt == request.time;
+      allow update: if signedIn() && validProject(request.resource.data)
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (
+          (isOwner(projectId)
+            && request.resource.data.members[resource.data.ownerId] == resource.data.members[resource.data.ownerId]
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberIds', 'updatedAt']))
+          || (isEditor(projectId)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'description', 'deadline', 'taskIds', 'revision', 'updatedAt'])
+            // A stale transaction may propose the current revision before its
+            // read precondition is checked. Allow equality so Firestore can
+            // retry that conflict instead of returning permission-denied.
+            && request.resource.data.revision >= resource.data.revision
+            && request.resource.data.revision <= resource.data.revision + 1)
+          || validJoin(projectId)
+        );
+      allow delete: if false;
+      match /tasks/{taskId} {
+        function validTask() {
+          let data = request.resource.data;
+          return data.keys().hasAll(['id', 'projectId', 'title', 'description', 'assignedTo', 'deadline', 'status', 'dependsOnTaskId', 'checklist'])
+            && data.keys().hasOnly(['id', 'projectId', 'title', 'description', 'assignedTo', 'deadline', 'status', 'dependsOnTaskId', 'checklist'])
+            && data.id == taskId && data.projectId == projectId
+            && data.title is string && data.title.size() > 0 && data.title.size() <= 120
+            && data.description is string && data.description.size() <= 2000
+            && data.deadline is string && data.deadline.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+            && data.assignedTo in getAfter(projectPath(projectId)).data.memberIds
+            && data.status in ['todo', 'in_progress', 'blocked', 'completed']
+            && data.checklist is list && data.checklist.size() <= 30
+            && data.dependsOnTaskId is string && data.dependsOnTaskId != taskId
+            && (data.dependsOnTaskId == '' || data.dependsOnTaskId in getAfter(projectPath(projectId)).data.taskIds)
+            && taskId in getAfter(projectPath(projectId)).data.taskIds;
+        }
+        function touchesProject() {
+          return getAfter(projectPath(projectId)).data.updatedAt == request.time
+            && getAfter(projectPath(projectId)).data.revision >= get(projectPath(projectId)).data.revision
+            && getAfter(projectPath(projectId)).data.revision <= get(projectPath(projectId)).data.revision + 1;
+        }
+        allow read: if isMember(projectId);
+        allow create, update: if isEditor(projectId) && validTask() && touchesProject();
+        allow delete: if isEditor(projectId) && touchesProject()
+          && !(taskId in getAfter(projectPath(projectId)).data.taskIds);
+      }
+    }
+    match /invitations/{inviteId} {
+      // Codes act as single-use capabilities; do not share them publicly.
+      allow get: if signedIn();
+      allow list: if isOwner(resource.data.projectId);
+      allow create: if signedIn() && isOwner(request.resource.data.projectId)
+        && request.resource.data.keys().hasAll(['projectId', 'projectName', 'role', 'acceptedBy', 'expiresAt', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['projectId', 'projectName', 'role', 'acceptedBy', 'expiresAt', 'createdAt'])
+        && inviteId.matches('^[A-Za-z0-9]{20}$')
+        && request.resource.data.projectName == get(projectPath(request.resource.data.projectId)).data.name
+        && request.resource.data.role in ['editor', 'viewer'] && request.resource.data.acceptedBy == ''
+        && request.resource.data.createdAt == request.time && request.resource.data.expiresAt is timestamp
+        && request.resource.data.expiresAt > request.time
+        && request.resource.data.expiresAt <= request.time + duration.value(8, 'd');
+      allow update: if signedIn() && resource.data.acceptedBy == '' && resource.data.expiresAt > request.time
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['acceptedBy'])
+        && request.resource.data.acceptedBy == request.auth.uid
+        && !(request.auth.uid in get(projectPath(resource.data.projectId)).data.memberIds)
+        && request.auth.uid in getAfter(projectPath(resource.data.projectId)).data.memberIds
+        && getAfter(projectPath(resource.data.projectId)).data.joinInviteId == inviteId
+        && getAfter(projectPath(resource.data.projectId)).data.members[request.auth.uid].role == resource.data.role;
+      allow delete: if isOwner(resource.data.projectId);
+    }
     match /{document=**} {
       allow read, write: if false;
     }

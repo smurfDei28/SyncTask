@@ -13,10 +13,12 @@ import { useProjects } from '@/context/ProjectContext';
 import { TaskStatus } from '@/types';
 import { isOverdue } from '@/utils/dates';
 import { getTaskStatus } from '@/utils/tasks';
+import { DataStatus } from '@/components/DataStatus';
 
 export default function ProjectDashboardScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { projects, tasks, members } = useProjects();
+  const { projects, tasks, members, loading, error } = useProjects();
+  if (loading || error) return <Screen><BackButton to="home" /><DataStatus /></Screen>;
   const project = projects.find(item => item.id === id);
   if (!project) return <Screen><BackButton to="home" /><EmptyState title="Project not found" message="Return to Home to open your project." /></Screen>;
   const selected = tasks.filter(task => task.projectId === project.id);
@@ -27,6 +29,7 @@ export default function ProjectDashboardScreen() {
   return <Screen><BackButton to="home" /><Text style={sharedStyles.title}>Project Dashboard</Text>
     <ProjectCard project={project} tasks={tasks} />
     <Button title="View Tasks" onPress={() => router.push({ pathname: '/(tabs)/tasks', params: { projectId: project.id } })} />
+    <Button title="Team & Invitations" variant="secondary" onPress={() => router.push({ pathname: '/project/members', params: { projectId: project.id } })} />
     <View style={sharedStyles.card}><Text style={styles.heading}>Task Status</Text>
       {statuses.map(status => <View key={status} style={styles.row}><Text style={sharedStyles.subtitle}>{statusLabels[status]}</Text><Text style={styles.count}>{selected.filter(task => getTaskStatus(task, tasks) === status).length}</Text></View>)}
       <View style={styles.row}><Text style={sharedStyles.subtitle}>Overdue</Text><Text style={styles.count}>{selected.filter(task => getTaskStatus(task, tasks) !== 'completed' && isOverdue(task.deadline)).length}</Text></View>
@@ -44,7 +47,6 @@ export default function ProjectDashboardScreen() {
       </View>)}
     </View>
     <View style={sharedStyles.card}><Text style={styles.heading}>Progress</Text><Text style={sharedStyles.subtitle}>Overall progress is shown above and updates when a task is marked completed.</Text>
-      <Text style={styles.heading}>Activity</Text><Text style={sharedStyles.subtitle}>Activity history is planned for a later phase.</Text>
     </View>
   </Screen>;
 }

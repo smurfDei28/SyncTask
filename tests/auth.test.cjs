@@ -207,7 +207,7 @@ test('login normalizes email, allows existing passwords, and logout invokes Fire
   await service.logout();
   assert.equal(harness.auth.currentUser, null);
 });
-test('auth routing waits for the observer and Phase 2 stays local', () => {
+test('auth routing waits for the observer and shared workspace resets between users', () => {
   const root = fs.readFileSync('src/app/_layout.tsx', 'utf8');
   assert(root.includes('if (loading) return <SessionSplash />'));
   const context = fs.readFileSync('src/context/AuthContext.tsx', 'utf8');
@@ -215,7 +215,7 @@ test('auth routing waits for the observer and Phase 2 stays local', () => {
   assert(context.includes('if (busy.current) return'));
   assert(context.includes('generation.current'));
   assert(!fs.existsSync('src/context/MockAuth.tsx'));
-  assert(!fs.readFileSync('src/context/ProjectContext.tsx', 'utf8').includes('firebase'));
+  assert(root.includes("key={user?.id ?? 'signed-out'}"));
   assert(fs.readFileSync('src/app/index.tsx', 'utf8').includes("'/\u0028auth\u0029/login'"));
   assert(fs.readFileSync('.gitignore', 'utf8').split(/\r?\n/).includes('.env'));
 });
