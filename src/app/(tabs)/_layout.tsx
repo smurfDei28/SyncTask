@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Text } from 'react-native';
+import { SymbolView } from 'expo-symbols';
 import { colors } from '@/constants/colors';
 
 export default function TabsLayout() {
@@ -7,7 +7,7 @@ export default function TabsLayout() {
     headerShown: false, tabBarActiveTintColor: colors.primary,
     tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
   }}>
-    <Tabs.Screen name="home" options={{ title: 'Home', tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>?</Text> }} />
-    <Tabs.Screen name="tasks" options={{ title: 'Tasks', tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22 }}>?</Text> }} />
+    <Tabs.Screen name="home" options={{ title: 'Home', tabBarIcon: ({ color, size }) => <SymbolView name={{ ios: 'house.fill', android: 'home', web: 'home' }} tintColor={color} size={size} /> }} />
+    <Tabs.Screen name="tasks" options={{ title: 'Tasks', tabBarIcon: ({ color, size }) => <SymbolView name={{ ios: 'list.bullet', android: 'checklist', web: 'checklist' }} tintColor={color} size={size} /> }} />
   </Tabs>;
 }
