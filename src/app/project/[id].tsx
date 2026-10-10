@@ -1,7 +1,6 @@
-import { router, useLocalSearchParams } from 'expo-router';
-import { Text, View } from 'react-native';
 import { BackButton } from '@/components/BackButton';
 import { Button } from '@/components/Button';
+import { DataStatus } from '@/components/DataStatus';
 import { EmptyState } from '@/components/EmptyState';
 import { ProjectCard } from '@/components/ProjectCard';
 import { Screen } from '@/components/Screen';
@@ -13,7 +12,8 @@ import { useProjects } from '@/context/ProjectContext';
 import { TaskStatus } from '@/types';
 import { isOverdue } from '@/utils/dates';
 import { getTaskStatus } from '@/utils/tasks';
-import { DataStatus } from '@/components/DataStatus';
+import { router, useLocalSearchParams } from 'expo-router';
+import { Text, View } from 'react-native';
 
 export default function ProjectDashboardScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -29,6 +29,7 @@ export default function ProjectDashboardScreen() {
   return <Screen><BackButton to="home" /><Text style={sharedStyles.title}>Project Dashboard</Text>
     <ProjectCard project={project} tasks={tasks} />
     <Button title="View Tasks" onPress={() => router.push({ pathname: '/(tabs)/tasks', params: { projectId: project.id } })} />
+    <Button title="View Analytics" variant="secondary" onPress={() => router.push(`/project/analytics?id=${project.id}`)}/>
     <Button title="Team & Invitations" variant="secondary" onPress={() => router.push({ pathname: '/project/members', params: { projectId: project.id } })} />
     <View style={sharedStyles.card}><Text style={styles.heading}>Task Status</Text>
       {statuses.map(status => <View key={status} style={styles.row}><Text style={sharedStyles.subtitle}>{statusLabels[status]}</Text><Text style={styles.count}>{selected.filter(task => getTaskStatus(task, tasks) === status).length}</Text></View>)}
