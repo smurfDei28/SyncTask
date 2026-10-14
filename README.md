@@ -2,6 +2,8 @@
 
 Expo SDK 57 / React Native / TypeScript / Expo Router / Firebase Auth and Firestore.
 
+Backend repo: https://github.com/chucjq/SyncTask-Assistant
+
 ## Features
 
 - Email/password registration and login, school-domain validation, saved profiles, and persistent sign-in.
