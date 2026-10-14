@@ -42,6 +42,18 @@ npx.cmd expo start
 
 Notification configuration is included in `app.json`. After adding native packages or changing their configuration, create/rebuild your development build following https://docs.expo.dev/develop/development-builds/create-a-build/. This repository uses generated native projects: configure them through `app.json` instead of editing `ios/` or `android/`.
 
+## Assistant tab (demo)
+
+The Assistant tab asks the backend questions about your projects and tasks. It needs the backend running and this setting in `.env`:
+
+```
+EXPO_PUBLIC_ASSISTANT_URL=http://192.168.1.23:8000
+```
+
+Use the computer's address on the same Wi-Fi, and restart Expo after changing it. Before opening the app, check `http://<computer-address>:8000/health` in the phone's browser. Messages live in memory only and disappear when the app reloads. The backend README covers the firewall and `HOST` setting.
+
+If the tab can't reach the backend, set `EXPO_PUBLIC_ASSISTANT_DEBUG=true` in `.env` (and in the EAS `preview` environment), then rebuild. The tab then shows the address, the device's error text, and any HTTP status. `adb logcat` also shows `[assistant]` lines.
+
 ## Data and consistency
 
 - `users/{uid}` holds each account's private profile. Profiles cannot be listed or read by other users.
@@ -57,7 +69,7 @@ Notification configuration is included in `app.json`. After adding native packag
 
 Phone reminders are local scheduled notifications, rather than server push notifications. They are refreshed when the app receives task updates, opens, or returns to the foreground. If teammates change work while this app is closed, existing alerts may remain until it is reopened. Web supports the in-app due-task list, but not phone notifications. The nearest 60 future alerts are scheduled to stay below device notification limits. Editing deadlines, reassigning tasks, completing tasks, disabling reminders, and signing out cancel or replace scheduled alerts when the app syncs. Reminder settings are saved per account on each device.
 
-Existing mock projects are not migrated or inserted into real accounts. There is no offline write queue, chat, file upload, activity log, server push sender, or hosting deployment in this milestone.
+Existing mock projects are not migrated or inserted into real accounts. There is no offline write queue, file upload, activity log, server push sender, or hosting deployment in this milestone.
 
 ## Automated checks
 
